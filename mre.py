@@ -49,7 +49,7 @@ class Camera:
         with Manager() as queue_manager:
             try:
                 async with trio.open_nursery() as self._nursery:
-                    self._results_queue = queue_manager.Queue(1)
+                    self._queue = queue_manager.Queue(1)
                     await self._nursery.start(self._result_receiver)
                     try:
                         yield
@@ -65,7 +65,7 @@ class Camera:
         task_status.started()
         while True:
             try:
-                self._results_queue.get_nowait()
+                self._queue.get_nowait()
             except QueueEmptyException:
                 pass
             await trio.sleep(0)
