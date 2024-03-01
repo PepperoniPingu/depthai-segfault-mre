@@ -1,0 +1,5 @@
+depthai==2.19.1.0
+opencv-python==4.9.0.80
+pyzbar==0.1.9
+trio==0.23.2
+trio-parallel==1.2.1
