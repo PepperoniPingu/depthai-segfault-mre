@@ -1,8 +1,8 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Optional
 from multiprocessing import Manager
 from queue import Empty as QueueEmptyException
-from typing import Optional
 import depthai
 import trio
 
@@ -37,9 +37,6 @@ class Camera:
         x_video_out.input.setBlocking(False)
         self._manip.out.link(x_video_out.input)
 
-        self._device: Optional[depthai.Device] = None
-        self._nursery = None  
-
     async def connect(self) -> None:
         self._device = depthai.Device(self._pipeline, depthai.UsbSpeed.SUPER)
         self.output_queue = self._device.getOutputQueue(name="video", maxSize=1, blocking=False)
@@ -47,22 +44,15 @@ class Camera:
     @asynccontextmanager
     async def film(self) -> AsyncGenerator[None, None, None]:
         with Manager() as queue_manager:
-            try:
-                async with trio.open_nursery() as self._nursery:
-                    self._queue = queue_manager.Queue(1)
-                    await self._nursery.start(self._result_receiver)
-                    try:
-                        yield
-                    finally:
-                        print("cancelling...")
-                        self._nursery.cancel_scope.cancel()
-            finally:
-                print("exiting manager")
+            async with trio.open_nursery() as nursery:
+                self._queue = queue_manager.Queue(1)
+                nursery.start_soon(self._queue_receiver)
+                try:
+                    yield
+                finally:
+                    nursery.cancel_scope.cancel()
 
-    async def _result_receiver(
-        self, task_status: trio.TaskStatus = trio.TASK_STATUS_IGNORED
-    ) -> None:
-        task_status.started()
+    async def _queue_receiver(self) -> None:
         while True:
             try:
                 self._queue.get_nowait()
@@ -71,10 +61,7 @@ class Camera:
             await trio.sleep(0)
 
     def close(self) -> None:
-        if self._nursery is not None:
-            self._nursery.cancel_scope.cancel()
-        if self._device is not None:
-            self._device.close()
+        self._device.close()
 
 async def main() -> None:
 
@@ -84,8 +71,7 @@ async def main() -> None:
         print("connected")
 
         async with camera.film():
-            with trio.move_on_after(0.5):
-                await trio.sleep_forever()
+            await trio.sleep(0.1)
 
         camera.close()
 
